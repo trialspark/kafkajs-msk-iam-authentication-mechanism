@@ -5,8 +5,8 @@ export class Sha256HashConstructor {
   private readonly sha256: Hmac;
 
   constructor(signingKey?: SourceData) {
-    if (typeof signingKey !== 'string') {
-      throw new Error('Signing key must be a string!');
+    if (typeof signingKey !== 'string' && !(signingKey instanceof Buffer)) {
+      throw new Error('Signing key must be a string or Buffer!');
     }
 
     this.sha256 = createHmac('sha256', signingKey);
