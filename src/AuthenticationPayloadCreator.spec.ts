@@ -1,3 +1,4 @@
+import * as uuid from 'uuid';
 import MockDate from 'mockdate';
 
 import { AuthenticationPayloadCreator } from './AuthenticationPayloadCreator';
@@ -7,6 +8,8 @@ describe('AuthenticationPayloadCreator', () => {
   const authenticationPayloadCreator = new AuthenticationPayloadCreator({
     region,
     userAgent: 'test-api',
+    brokerHost: 'example.com',
+    id: uuid.v4(),
   });
   const credentials = {
     accessKeyId: 'accessKeyId',
@@ -40,7 +43,7 @@ describe('AuthenticationPayloadCreator', () => {
 
     it('should return correct authentication payload', async () => {
       const brokerHost = 'example.com';
-      const payload = await authenticationPayloadCreator.create({ brokerHost });
+      const { payload } = await authenticationPayloadCreator.create();
 
       expect(providerSpy).toHaveBeenCalled();
       expect(signatureProviderSpy).toHaveBeenCalled();
