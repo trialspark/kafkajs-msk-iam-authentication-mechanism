@@ -1,5 +1,8 @@
-import { getDefaultRoleAssumerWithWebIdentity } from '@aws-sdk/client-sts';
-import { defaultProvider } from '@aws-sdk/credential-provider-node';
+import * as uuid from 'uuid';
+import {
+  fromNodeProviderChain,
+  fromTemporaryCredentials,
+} from '@aws-sdk/credential-providers';
 import { SignatureV4 } from '@aws-sdk/signature-v4';
 import { type AwsCredentialIdentity, type Provider } from '@aws-sdk/types';
 import { createHash } from 'crypto';
@@ -14,8 +17,14 @@ const algorithm = 'AWS4-HMAC-SHA256';
 const action = 'kafka-cluster:Connect';
 
 export type AuthenticationPayloadCreatorOptions = {
+  /** A uuid that is shared for this instance of the KafkaJS client. */
+  id: string;
+
   /** The AWS region of the Kafka broker. */
   region: string;
+
+  /** The host of the broker being connected to */
+  brokerHost: string;
 
   /**
    * Provides the time period, in seconds, for which the generated presigned URL is valid.
@@ -25,30 +34,91 @@ export type AuthenticationPayloadCreatorOptions = {
 
   /** A string that describes the client. */
   userAgent?: string;
+
+  /**
+   * The ARN of a role to assume. If specified, temporary credentials for the role will
+   * be used.
+   */
+  assumeRole?: string;
 };
 
-export type AuthenticationPayload = ReturnType<
-  AuthenticationPayloadCreator['create']
-> extends Promise<infer T>
-  ? T
-  : never;
+export type AuthenticationPayload = {
+  version: '2020_10_22';
+  'user-agent': string;
+  host: string;
+  action: typeof action;
+  'x-amz-credential': string;
+  'x-amz-algorithm': typeof algorithm;
+  'x-amz-date': string;
+  'x-amz-security-token': string | undefined;
+  'x-amz-signedheaders': typeof signedHeaders;
+  'x-amz-expires': string;
+  'x-amz-signature': string;
+};
+
+type PermanentAuthenticationData = {
+  expires: false;
+  expiration: undefined;
+  expiresIn: undefined;
+  payload: AuthenticationPayload;
+};
+
+type TemporaryAuthenticationData = {
+  expires: true;
+  expiration: Date;
+  /** The number of milliseconds the credentials will expire in. */
+  expiresIn: number;
+  payload: AuthenticationPayload;
+};
+
+type AuthenticationData =
+  | PermanentAuthenticationData
+  | TemporaryAuthenticationData;
 
 export class AuthenticationPayloadCreator {
+  private readonly id: string;
+  private readonly brokerHost: string;
   private readonly region: string;
   private readonly ttl: string;
   private readonly userAgent: string;
   private readonly provider: Provider<AwsCredentialIdentity>;
   private readonly signature: SignatureV4;
 
-  constructor({ region, ttl, userAgent }: AuthenticationPayloadCreatorOptions) {
+  constructor({
+    id,
+    brokerHost,
+    region,
+    ttl,
+    userAgent,
+    assumeRole,
+  }: AuthenticationPayloadCreatorOptions) {
+    this.id = uuid.v5(brokerHost, id);
+    this.brokerHost = brokerHost;
     this.region = region;
     this.ttl = ttl ?? '900';
     this.userAgent = userAgent ?? 'MSK_IAM_v1.0.0';
-    this.provider = defaultProvider({
-      roleAssumerWithWebIdentity: getDefaultRoleAssumerWithWebIdentity({
-        region: process.env.AWS_REGION ?? region,
-      }),
-    });
+    this.provider = (() => {
+      let cachedCredentials: Promise<AwsCredentialIdentity> | undefined;
+
+      return async () => {
+        cachedCredentials ??= (
+          assumeRole
+            ? fromTemporaryCredentials({
+                params: {
+                  // eslint-disable-next-line @typescript-eslint/naming-convention
+                  RoleArn: assumeRole,
+                  // eslint-disable-next-line @typescript-eslint/naming-convention
+                  DurationSeconds: 900,
+                  // eslint-disable-next-line @typescript-eslint/naming-convention
+                  RoleSessionName: `aws-sdk-js-kafkajs-${this.id}`,
+                },
+              })
+            : fromNodeProviderChain()
+        )();
+
+        return cachedCredentials;
+      };
+    })();
 
     this.signature = new SignatureV4({
       credentials: this.provider,
@@ -61,12 +131,8 @@ export class AuthenticationPayloadCreator {
   }
 
   // TESTED
-  async create({ brokerHost }: { brokerHost: string }) {
-    if (!brokerHost) {
-      throw new Error('Missing values');
-    }
-
-    const { accessKeyId, sessionToken } = await this.provider();
+  async create(): Promise<AuthenticationData> {
+    const { accessKeyId, sessionToken, expiration } = await this.provider();
 
     const now = Date.now();
 
@@ -74,7 +140,7 @@ export class AuthenticationPayloadCreator {
       accessKeyId,
       this.timestampYYYYmmDDFormat(now),
     );
-    const canonicalHeaders = this.generateCanonicalHeaders(brokerHost);
+    const canonicalHeaders = this.generateCanonicalHeaders(this.brokerHost);
     const canonicalQueryString = this.generateCanonicalQueryString(
       this.timestampYYYYmmDDTHHMMSSZFormat(now),
       xAmzCredential,
@@ -92,10 +158,10 @@ export class AuthenticationPayloadCreator {
       signingDate: new Date(now).toISOString(),
     });
 
-    return {
+    const payload: AuthenticationPayload = {
       version: '2020_10_22',
       'user-agent': this.userAgent,
-      host: brokerHost,
+      host: this.brokerHost,
       action,
       'x-amz-credential': xAmzCredential,
       'x-amz-algorithm': algorithm,
@@ -104,6 +170,22 @@ export class AuthenticationPayloadCreator {
       'x-amz-signedheaders': signedHeaders,
       'x-amz-expires': this.ttl,
       'x-amz-signature': signature,
+    };
+
+    if (!expiration) {
+      return {
+        expires: false,
+        expiration: undefined,
+        expiresIn: undefined,
+        payload,
+      };
+    }
+
+    return {
+      expires: true,
+      expiration,
+      expiresIn: expiration.valueOf() - now,
+      payload,
     };
   }
 
