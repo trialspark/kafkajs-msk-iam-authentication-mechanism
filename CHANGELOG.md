@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/trialspark/kafkajs-msk-iam-authentication-mechanism/compare/v1.0.0...v1.1.0) (2022-11-30)
+
+
+### Features
+
+* Support authentication via role assumption ([494b55c](https://github.com/trialspark/kafkajs-msk-iam-authentication-mechanism/commit/494b55cbcf748759a19c92cf13248e1f8f7cf0ea))
+
 # 1.0.0 (2022-11-29)
 
 
