@@ -108,8 +108,6 @@ export class AuthenticationPayloadCreator {
                   // eslint-disable-next-line @typescript-eslint/naming-convention
                   RoleArn: assumeRole,
                   // eslint-disable-next-line @typescript-eslint/naming-convention
-                  DurationSeconds: 900,
-                  // eslint-disable-next-line @typescript-eslint/naming-convention
                   RoleSessionName: `aws-sdk-js-kafkajs-${this.id}`,
                 },
               })
