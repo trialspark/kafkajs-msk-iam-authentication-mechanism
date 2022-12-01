@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/trialspark/kafkajs-msk-iam-authentication-mechanism/compare/v1.1.0...v1.1.1) (2022-12-01)
+
+
+### Bug Fixes
+
+* Remove hardcoded STS credentials expiration of 900 seconds ([f9cce8f](https://github.com/trialspark/kafkajs-msk-iam-authentication-mechanism/commit/f9cce8ff554b1e742d3ac1e63fbf74f407adfd70))
+
 # [1.1.0](https://github.com/trialspark/kafkajs-msk-iam-authentication-mechanism/compare/v1.0.0...v1.1.0) (2022-11-30)
 
 

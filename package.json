@@ -1,6 +1,6 @@
 {
   "name": "@trialspark/kafkajs-msk-iam-authentication-mechanism",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Authentication mechanism for AWS MSK IAM for kafkajs.",
   "keywords": [
     "kafkajs",
